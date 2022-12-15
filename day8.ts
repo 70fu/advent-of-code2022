@@ -16,12 +16,6 @@ function addPos(a:Position,b:Position):Position {
     return {x:a.x+b.x,y:a.y+b.y};
 }
 
-function inverseDir(dir:Direction):Direction{
-    dir.x*=-1;
-    dir.y*=-1;
-    return dir;
-}
-
 class Tree{
     height:number;
     xVisible:boolean;
@@ -77,12 +71,6 @@ class Grid<T>{
         return this.width*this.height;
     }
 
-    translateSpiralPos(spiralPos:Position):Grid<T>{
-        spiralPos.x+=Math.floor(this.width/2);
-        spiralPos.y+=Math.floor(this.height/2);
-        return this;
-    }
-
     //return undefined on invalid index
     get(pos:Position):T | undefined{
         if(this.invalidPos(pos)){
@@ -101,65 +89,48 @@ class Grid<T>{
     }
 }
 
-//indexing via ulma spiral
-//source: https://stackoverflow.com/a/11551316
-function first(cycle:number){
-    let x = 2 * cycle - 1;
-    return x * x;
-}
-
-function cycle(index:number){
-    return Math.floor((Math.sqrt(index) + 1)/2)
-}
-
-function length(cycle:number){
-    return 8 * cycle;
-}
-
-function sector(index:number){
-    const c = cycle(index);
-    const offset = index - first(c);
-    const n = length(c);
-    return Math.floor(4 * offset / n);
-}
-
-function position(index:number):Position{
-    if(index==0){
-        return {x:0,y:0};
-    }
-    const c = cycle(index);
-    const s = sector(index)
-    const sectorOffset = index - first(c) - Math.floor(s * length(c) / 4);
-    if(s == 0) //north
-        return {y:-c, x:-c + sectorOffset + 1};
-    if(s == 1) //east
-        return {y:-c + sectorOffset + 1, x:c};
-    if(s == 2) //south
-        return {y:c, x:c - sectorOffset - 1};
-    // else, west
-    return {y:c - sectorOffset - 1, x:-c};
-}
-
 function raycast(origin:Position,dir:Direction,grid:Grid<Tree>){
-    let currentPos = {x:origin.x,y:origin.y};
+    let currentPos = origin
     let currentTree = grid.get(origin) as Tree;
     let originTree = currentTree;
-    while(!currentTree.isVisible(dir)) {
-        let nextPos = addPos(currentPos,dir);
-        let nextTree = grid.get(nextPos) as Tree;
-
-        if(nextTree.height>=originTree.height){
-            return;
+    let highest = originTree.height;
+    do {
+        if(highest<currentTree.height){
+            currentTree.makeVisible(dir);
+            highest = currentTree.height;
+            if(highest==9){
+                return;
+            }
         }
-
-        currentPos = nextPos;
-        currentTree = nextTree;
-    }
-
-    originTree.makeVisible(dir);
+        currentPos = addPos(currentPos,dir);
+        currentTree = grid.get(currentPos) as Tree;
+    }while(!grid.invalidPos(currentPos) && !grid.onEdge(currentPos));
 }
 
-function solve(input:string){
+function calcScenicScore(origin:Position,grid:Grid<Tree>){
+    return getLookDistance(origin,{x:-1,y:0},grid) *
+    getLookDistance(origin,{x:1,y:0},grid) *
+    getLookDistance(origin,{x:0,y:-1},grid) *
+    getLookDistance(origin,{x:0,y:1},grid);
+}
+
+function getLookDistance(origin:Position,dir:Direction,grid:Grid<Tree>):number{
+    let distance = 0;
+    let originTree = grid.get(origin) as Tree;
+    let pos = addPos(origin,dir);
+    while(!grid.invalidPos(pos)){
+        ++distance;
+        let tree = grid.get(pos) as Tree;
+        if(tree.height>=originTree.height){
+            return distance;
+        }
+
+        pos = addPos(pos,dir);
+    }
+    return distance;
+}
+
+function loadGrid(input:string):Grid<Tree>{
     let lines = input.split(/\r?\n/);
     lines = lines.filter((line)=>line.trim());
 
@@ -175,29 +146,19 @@ function solve(input:string){
         ++y;
     }
 
-    for(let i = 0,visitedCells=0 ; visitedCells<grid.size;++i){
-        const pos = position(i);
-        if(grid.translateSpiralPos(pos).invalidPos(pos)){
-            continue;
-        }
+    return grid;
+}
 
-        ++visitedCells;
-        const tree = grid.get(pos);
+function solve(input:string){
+    let grid = loadGrid(input);
 
-        let count = 0;
-    for(let i = 0;i<grid.size;++i){
-        if(grid.elements[i].visible)
-            ++count;
+    for(let x = 1;x<grid.width-1;++x){
+        raycast({x:x,y:grid.height-1},{x:0,y:-1},grid);
+        raycast({x:x,y:0},{x:0,y:1},grid);
     }
-
-        if(tree?.visible){
-            continue;
-        }
-        
-        raycast(pos,{x:0,y:-1},grid);
-        raycast(pos,{x:0,y:1},grid);
-        raycast(pos,{x:-1,y:0},grid);
-        raycast(pos,{x:1,y:0},grid);
+    for(let y = 1;y<grid.height-1;++y){
+        raycast({x:0,y:y},{x:1,y:0},grid);
+        raycast({x:grid.width-1,y:y},{x:-1,y:0},grid);
     }
 
     let count = 0;
@@ -208,7 +169,22 @@ function solve(input:string){
     return count;
 }
 
+function solve2(input:string){
+    let grid = loadGrid(input);
+
+    //pretty much brute forcing
+    let bestScenicScore = 0;
+    for(let x = 1;x<grid.width-1;++x){
+        for(let y = 1;y<grid.height-1;++y){
+            bestScenicScore = Math.max(bestScenicScore,calcScenicScore({x:x,y:y},grid));
+        }
+    }
+
+    return bestScenicScore;
+}
+
 aocutils.getInput(DAY).then((input)=>{
     console.log(solve(input));
     console.log("=========================");
+    console.log(solve2(input));
 });
