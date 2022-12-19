@@ -1,0 +1,30 @@
+MonkeyScript {
+
+Monkeys = Monkey*
+
+Monkey = "Monkey" number ":" StartingItems OperationLine Test
+
+StartingItems = "Starting items:" Inventory
+
+Inventory = number ("," number)*
+
+OperationLine = "Operation:" Operation
+
+Operation = "new" "=" OperationExp
+
+OperationExp = MulExp | AddExp
+
+MulExp = operand "*" operand
+
+AddExp = operand "+" operand
+
+operand = "old" | number
+
+number = digit+
+
+Test = "Test: divisible by" number TrueCondition FalseCondition
+
+TrueCondition = "If true: throw to monkey" number
+
+FalseCondition = "If false: throw to monkey" number
+}
