@@ -78,7 +78,7 @@ class Vector implements Position{
 
 //grid that uses circular buffer rows
 //if accesing row with y=height+X, then first X rows are overwritten and grid stores rows from X to height+X
-class Grid<T>{
+class Grid<T extends string>{
     readonly width:number;
     readonly height:number;
     elements:T[];
@@ -158,6 +158,57 @@ class Grid<T>{
         }
     }
 
+    compareRows(y1:number,y2:number):boolean{
+        const pos = new Vector(0,y1);
+        const i1 = this.toIndex(pos);
+        pos.y = y2;
+        const i2 = this.toIndex(pos);
+        for(let offset = 0; offset<this.width;++offset){
+            if(this.elements[i1+offset] != this.elements[i2+offset]){
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    isCycle(y1:number,y2:number):boolean{
+        const minY = Math.min(y1,y2);
+        const maxY = Math.max(y1,y2);
+        const firstRow = minY-(maxY-minY-1);
+        if(this.invalidPos(new Vector(0,firstRow))){
+            return false;
+        }
+        for(let i = 0;i<maxY-minY;++i){
+            if(!this.compareRows(maxY-i,minY-i)){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    //first row index>=startIndex that has same values as row y
+    findLowestMatchingRow(y:number, startIndex:number):number{
+        for(let i = startIndex ; i<y;++i){
+            if(this.compareRows(y,i)){
+                return i;
+            }
+        }
+        return y;
+    }
+
+    printRows(max:number,min:number){
+        let i = this.toIndex(new Vector(0,max));
+        for(let row = max; row>=min;--row){
+            const rowString = "".concat(...this.elements.slice(i,i+this.width));
+            console.log(`${rowString} ${row}`);
+            i-=this.width;
+            if(i<0){
+                i += this.elements.length;
+            }
+        }
+    }
+
     private extendGrid(extension:number){
         this.yOffset+=extension;
         //clean rows
@@ -170,7 +221,7 @@ class Grid<T>{
     }
 }
 
-type CellType = "#" | " ";
+type CellType = "#" | ".";
 
 function isSolid(cell:CellType){
     return cell=="#";
@@ -296,9 +347,11 @@ function solve(input:string, rockCount:number):number{
         return ROCKS[(rockIndex++)%ROCKS.length].copy()
     }
 
-    const grid = new Grid<CellType>(7,2048,' ');
+    const grid = new Grid<CellType>(7,2048*16,'.');
     let highestHeight = -1;
-
+    let firstCycle:number[]=[];
+    let rockIndexFirstCycle = 0;
+    let simulatedCycleHeight = 0;
     while(rockIndex<rockCount){
         //spawn rock
         const rock = popRock();
@@ -316,22 +369,64 @@ function solve(input:string, rockCount:number):number{
         }
 
         //add rock to grid
+        let lowestModifiedRow = highestHeight+4;
         for(let part of rock.worldParts){
             grid.set(part,'#');
             highestHeight = Math.max(highestHeight,part.y);
+            lowestModifiedRow = Math.min(lowestModifiedRow,part.y);
         }
+
+        //check for cycles from highestHeight to lowestModifiedRow (inclusive)
+        if(firstCycle.length == 0){
+            for(let i = highestHeight;i>=lowestModifiedRow;--i){
+                let rowIndex=grid.findLowestMatchingRow(i,0);
+                while(rowIndex!=i){
+                    //check if there already 2 occurences of a cycle
+                    if(rowIndex>=0 && grid.isCycle(i,rowIndex) && i-rowIndex>10 && grid.isCycle(rowIndex,rowIndex-(i-rowIndex))){
+                        console.log(`Cycle of size ${i-rowIndex} found: ${rowIndex+1}-${i}`);
+                        //grid.printRows(i,rowIndex+1);
+                        //grid.printRows(rowIndex,rowIndex-(i-rowIndex)+1)
+                        //store index of rock that completed cycle
+                        rockIndexFirstCycle = rockIndex;
+                        //store last row of the two cycle occurences
+                        firstCycle.push(rowIndex,i);
+                        //modify i to break out of for loop
+                        i = lowestModifiedRow-1;
+                        break;
+                    }
+                    rowIndex = grid.findLowestMatchingRow(i,rowIndex+1);
+                }
+            }
+        }
+        else if(simulatedCycleHeight==0) {
+            //if cycle reappears, count how many rocks it needed to finish cycle
+            const cycleHeight = (firstCycle[1]-firstCycle[0]);
+            const targetRow = firstCycle[1]+cycleHeight
+            if(highestHeight>=targetRow && grid.isCycle(firstCycle[1],targetRow)){
+                const cycleRockCount = rockIndex - rockIndexFirstCycle;
+                const remainingRocks = rockCount - rockIndex - 1;
+
+                const remainingCycles = Math.floor(remainingRocks/cycleRockCount);
+
+                //add rocks of the simulated cycles
+                rockIndex+=cycleRockCount*remainingCycles;
+                //height of the simulated cycles
+                simulatedCycleHeight = remainingCycles * cycleHeight;
+            }
+        }
+    
 
         if(rockIndex%ROCKS.length == 0){
             jetIndices.push(jetIndex);
         }
     }
 
-    return highestHeight+1;
+    return highestHeight + simulatedCycleHeight +1;
 }
 
 
 aocutils.getInput(DAY).then((input)=>{
     console.log(solve(input,2022));
     console.log("=========================");
-    //console.log(solve(input,1000000000000))
+    console.log(solve(input,1000000000000))
 });
